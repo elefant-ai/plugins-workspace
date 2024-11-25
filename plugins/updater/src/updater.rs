@@ -395,10 +395,7 @@ impl Updater {
 
         let should_update = match self.version_comparator.as_ref() {
             Some(comparator) => comparator(self.current_version.clone(), release.clone()),
-            None => {
-                // default comparator
-                release.version > self.current_version
-            }
+            None => release.version > self.current_version,
         };
 
         let update = if should_update {
