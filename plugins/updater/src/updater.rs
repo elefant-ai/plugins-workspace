@@ -93,14 +93,13 @@ impl RemoteRelease {
 }
 
 pub type OnBeforeExit = Arc<dyn Fn() + Send + Sync + 'static>;
-pub(crate) type GlobalVersionComparator = Arc<dyn Fn(Version, RemoteRelease) -> bool + Send + Sync>;
+pub type VersionComparator = Arc<dyn Fn(Version, RemoteRelease) -> bool + Send + Sync>;
 
 pub struct UpdaterBuilder {
     app_name: String,
     current_version: Version,
     config: Config,
-    version_comparator: Option<Box<dyn Fn(Version, RemoteRelease) -> bool + Send + Sync>>,
-    global_version_comparator: Option<GlobalVersionComparator>,
+    pub(crate) version_comparator: Option<VersionComparator>,
     executable_path: Option<PathBuf>,
     target: Option<String>,
     endpoints: Option<Vec<Url>>,
@@ -127,7 +126,6 @@ impl UpdaterBuilder {
             current_version,
             config,
             version_comparator: None,
-            global_version_comparator: None,
             executable_path: None,
             target: None,
             endpoints: None,
@@ -142,7 +140,7 @@ impl UpdaterBuilder {
         mut self,
         f: F,
     ) -> Self {
-        self.version_comparator = Some(Box::new(f));
+        self.version_comparator = Some(Arc::new(f));
         self
     }
 
@@ -224,11 +222,6 @@ impl UpdaterBuilder {
         self
     }
 
-    pub(crate) fn global_version_comparator(mut self, f: GlobalVersionComparator) -> Self {
-        self.global_version_comparator.replace(f);
-        self
-    }
-
     pub fn build(self) -> Result<Updater> {
         let endpoints = self
             .endpoints
@@ -260,7 +253,6 @@ impl UpdaterBuilder {
             app_name: self.app_name,
             current_version: self.current_version,
             version_comparator: self.version_comparator,
-            global_version_comparator: self.global_version_comparator,
             timeout: self.timeout,
             proxy: self.proxy,
             endpoints,
@@ -292,8 +284,7 @@ pub struct Updater {
     config: Config,
     app_name: String,
     current_version: Version,
-    version_comparator: Option<Box<dyn Fn(Version, RemoteRelease) -> bool + Send + Sync>>,
-    global_version_comparator: Option<GlobalVersionComparator>,
+    version_comparator: Option<VersionComparator>,
     timeout: Option<Duration>,
     proxy: Option<Url>,
     endpoints: Vec<Url>,
@@ -405,13 +396,8 @@ impl Updater {
         let should_update = match self.version_comparator.as_ref() {
             Some(comparator) => comparator(self.current_version.clone(), release.clone()),
             None => {
-                match self.global_version_comparator.as_ref() {
-                    Some(comparator) => comparator(self.current_version.clone(), release.clone()),
-                    None => {
-                        // default comparator
-                        release.version > self.current_version
-                    }
-                }
+                // default comparator
+                release.version > self.current_version
             }
         };
 

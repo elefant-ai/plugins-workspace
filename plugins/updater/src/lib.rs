@@ -91,9 +91,7 @@ impl<R: Runtime, T: Manager<R>> UpdaterExt<R> for T {
             builder = builder.current_exe_args(args);
         }
 
-        if let Some(version_comparator) = version_comparator {
-            builder = builder.global_version_comparator(version_comparator.clone());
-        }
+        builder.version_comparator = version_comparator.clone();
 
         #[cfg(any(
             target_os = "linux",
@@ -125,7 +123,7 @@ impl<R: Runtime, T: Manager<R>> UpdaterExt<R> for T {
 struct UpdaterState {
     target: Option<String>,
     config: Config,
-    version_comparator: Option<GlobalVersionComparator>,
+    version_comparator: Option<VersionComparator>,
 }
 
 #[derive(Default)]
@@ -133,7 +131,7 @@ pub struct Builder {
     target: Option<String>,
     pubkey: Option<String>,
     installer_args: Vec<OsString>,
-    version_comparator: Option<GlobalVersionComparator>,
+    version_comparator: Option<VersionComparator>,
 }
 
 impl Builder {
