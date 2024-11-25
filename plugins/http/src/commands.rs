@@ -191,6 +191,11 @@ pub async fn fetch<R: Runtime>(
         let name = HeaderName::from_str(&h)?;
         #[cfg(not(feature = "unsafe-headers"))]
         if is_unsafe_header(&name) {
+            #[cfg(debug_assertions)]
+            {
+                eprintln!("[\x1b[33mWARNING\x1b[0m] Skipping {name} header as it is a forbidden header per fetch spec https://fetch.spec.whatwg.org/#terminology-headers");
+                eprintln!("[\x1b[33mWARNING\x1b[0m] if keeping the header is a desired behavior, you can enable `unsafe-headers` feature flag in your Cargo.toml");
+            }
             continue;
         }
 
@@ -264,11 +269,22 @@ pub async fn fetch<R: Runtime>(
                     }
                 }
 
+                // In case empty origin is passed, remove it. Some services do not like Origin header
+                // so this way we can remove it in explicit way. The default behaviour is still to set it
+                if cfg!(feature = "unsafe-headers")
+                    && headers.get(header::ORIGIN) == Some(&HeaderValue::from_static(""))
+                {
+                    headers.remove(header::ORIGIN);
+                };
+
                 if let Some(data) = data {
                     request = request.body(data);
                 }
 
                 request = request.headers(headers);
+
+                #[cfg(feature = "tracing")]
+                tracing::trace!("{:?}", request);
 
                 let fut = async move { request.send().await.map_err(Into::into) };
                 let mut resources_table = webview.resources_table();
@@ -290,6 +306,9 @@ pub async fn fetch<R: Runtime>(
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, data_url.mime_type().to_string())
                 .body(reqwest::Body::from(body))?;
+
+            #[cfg(feature = "tracing")]
+            tracing::trace!("{:?}", response);
 
             let fut = async move { Ok(reqwest::Response::from(response)) };
             let mut resources_table = webview.resources_table();
@@ -337,6 +356,9 @@ pub async fn fetch_send<R: Runtime>(
             return Err(Error::RequestCanceled);
         }
     };
+
+    #[cfg(feature = "tracing")]
+    tracing::trace!("{:?}", res);
 
     let status = res.status();
     let url = res.url().to_string();

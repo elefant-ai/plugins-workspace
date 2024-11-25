@@ -77,6 +77,10 @@ jobs:
               - .github/workflows/test-rust.yml
               - Cargo.toml
               - plugins/global-shortcut/**
+            tauri-plugin-opener:
+              - .github/workflows/test-rust.yml
+              - Cargo.toml
+              - plugins/opener/**
             tauri-plugin-haptics:
               - .github/workflows/test-rust.yml
               - Cargo.toml
@@ -168,7 +172,7 @@ jobs:
             }
           - {
               target: x86_64-unknown-linux-gnu,
-              os: ubuntu-latest,
+              os: ubuntu-22.04,
               runner: 'cargo',
               command: 'test'
             }
