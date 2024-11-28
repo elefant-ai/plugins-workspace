@@ -131,7 +131,7 @@ pub struct Builder {
     target: Option<String>,
     pubkey: Option<String>,
     installer_args: Vec<OsString>,
-    version_comparator: Option<VersionComparator>,
+    default_version_comparator: Option<VersionComparator>,
 }
 
 impl Builder {
@@ -172,18 +172,18 @@ impl Builder {
         self
     }
 
-    pub fn version_comparator<F: Fn(Version, RemoteRelease) -> bool + Send + Sync + 'static>(
+    pub fn default_version_comparator<F: Fn(Version, RemoteRelease) -> bool + Send + Sync + 'static>(
         mut self,
         f: F,
     ) -> Self {
-        self.version_comparator.replace(Arc::new(f));
+        self.default_version_comparator.replace(Arc::new(f));
         self
     }
 
     pub fn build<R: Runtime>(self) -> TauriPlugin<R, Config> {
         let pubkey = self.pubkey;
         let target = self.target;
-        let version_comparator = self.version_comparator;
+        let version_comparator = self.default_version_comparator;
         let installer_args = self.installer_args;
         PluginBuilder::<R, Config>::new("updater")
             .setup(move |app, api| {
