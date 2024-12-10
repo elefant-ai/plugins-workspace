@@ -172,7 +172,9 @@ impl Builder {
         self
     }
 
-    pub fn default_version_comparator<F: Fn(Version, RemoteRelease) -> bool + Send + Sync + 'static>(
+    pub fn default_version_comparator<
+        F: Fn(Version, RemoteRelease) -> bool + Send + Sync + 'static,
+    >(
         mut self,
         f: F,
     ) -> Self {
