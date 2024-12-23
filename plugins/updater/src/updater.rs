@@ -109,6 +109,10 @@ pub struct UpdaterBuilder {
     installer_args: Vec<OsString>,
     current_exe_args: Vec<OsString>,
     on_before_exit: Option<OnBeforeExit>,
+    #[cfg(target_os = "windows")]
+    /// Optional: Windows only try to use elevated task
+    /// Default to false
+    with_elevated_task: bool,
 }
 
 impl UpdaterBuilder {
@@ -133,6 +137,8 @@ impl UpdaterBuilder {
             timeout: None,
             proxy: None,
             on_before_exit: None,
+            #[cfg(target_os = "windows")]
+            with_elevated_task: false,
         }
     }
 
@@ -222,6 +228,13 @@ impl UpdaterBuilder {
         self
     }
 
+    #[cfg(target_os = "windows")]
+    /// Optional: Windows only try to use elevated task
+    pub fn with_elevated_task(mut self) -> Self {
+        self.with_elevated_task = true;
+        self
+    }
+
     pub fn build(self) -> Result<Updater> {
         let endpoints = self
             .endpoints
@@ -264,6 +277,8 @@ impl UpdaterBuilder {
             headers: self.headers,
             extract_path,
             on_before_exit: self.on_before_exit,
+            #[cfg(target_os = "windows")]
+            with_elevated_task: self.with_elevated_task,
         })
     }
 }
@@ -300,6 +315,10 @@ pub struct Updater {
     installer_args: Vec<OsString>,
     #[allow(unused)]
     current_exe_args: Vec<OsString>,
+    #[cfg(target_os = "windows")]
+    /// Optional: Windows only try to use elevated task
+    /// Default to false
+    with_elevated_task: bool,
 }
 
 impl Updater {
@@ -416,6 +435,8 @@ impl Updater {
                 headers: self.headers.clone(),
                 installer_args: self.installer_args.clone(),
                 current_exe_args: self.current_exe_args.clone(),
+                #[cfg(target_os = "windows")]
+                with_elevated_task: self.with_elevated_task,
             })
         } else {
             None
@@ -460,6 +481,10 @@ pub struct Update {
     installer_args: Vec<OsString>,
     #[allow(unused)]
     current_exe_args: Vec<OsString>,
+    #[cfg(target_os = "windows")]
+    /// Optional: Windows only try to use elevated task
+    /// Default to false
+    with_elevated_task: bool,
 }
 
 impl Resource for Update {}
@@ -617,6 +642,47 @@ impl Update {
                 .chain(self.installer_args())
                 .collect(),
             WindowsUpdaterType::Msi { path, .. } => {
+                if self.with_elevated_task {
+                    let product_name = &self.app_name;
+
+                    // Check if there is a task that enables the updater to skip the UAC prompt
+                    let update_task_name = format!("Update {product_name} - Skip UAC");
+                    let ouptut = std::process::Command::new("schtasks")
+                        .arg("/QUERY")
+                        .arg("/TN")
+                        .arg(update_task_name.clone())
+                        .output();
+                    if let Ok(output) = ouptut {
+                        if output.status.success() {
+                            // let temp_dir = temp.as_ref().unwrap().parent().unwrap();
+                            // // Rename the MSI to the match file name the Skip UAC task is expecting it to be
+                            let mut temp_msi = std::env::temp_dir();
+                            temp_msi.push(format!("{product_name}.msi"));
+
+                            // path is malformed
+                            let fixed_path =
+                                PathBuf::from(path.to_str().unwrap().replace("\"", ""));
+                            let res = std::fs::rename(&fixed_path, &temp_msi);
+                            if res.is_ok() {
+                                let exit_status = std::process::Command::new("schtasks")
+                                    .arg("/RUN")
+                                    .arg("/TN")
+                                    .arg(update_task_name)
+                                    .status()
+                                    .expect("failed to start updater task");
+
+                                if exit_status.success() {
+                                    if let Some(on_before_exit) = self.on_before_exit.as_ref() {
+                                        on_before_exit();
+                                    }
+                                    // Successfully launched task that skips the UAC prompt
+                                    std::process::exit(0);
+                                }
+                            };
+                        }
+                        // Failed to run update task. Following UAC Path
+                    }
+                }
                 let escaped_args = current_args
                     .iter()
                     .map(escape_msi_property_arg)
@@ -649,6 +715,7 @@ impl Update {
         let file = encode_wide(file);
 
         let parameters = installer_args.join(OsStr::new(" "));
+        println!("parameters: {:#?}", parameters);
         let parameters = encode_wide(parameters);
 
         unsafe {
